@@ -1,3 +1,6 @@
+# Ref: https://www.kitware.com/a-vtk-pipeline-primer-part-2/
+# Ref: https://www.kitware.com/a-vtk-pipeline-primer-part-3/
+
 import vtk
 from vtk.util import keys
 from vtk.util.vtkAlgorithm import VTKPythonAlgorithmBase

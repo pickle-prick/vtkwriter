@@ -6,6 +6,9 @@ import typing as t
 import random
 import matplotlib.pyplot as plt
 
+################################
+## Mesh
+
 def mesh_from_vtk_legacy(path:str):
   reader = vtk.vtkPolyDataReader()
   reader.SetFileName(path)
@@ -84,6 +87,9 @@ mesh_1 = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
 mesh_2 = mesh_cylinder()
 mesh_3 = mesh_compund()
 
+################################
+## Lut
+
 @dataclass
 class Lut:
   lut:vtk.vtkLookupTable
@@ -150,6 +156,9 @@ def get_color_map_lut(map_name: str) -> vtk.vtkLookupTable:
   
   return vtk_color_table
 
+################################
+## Serialization
+
 def legacy_from_vtk_mesh(mesh:vtk.vtkPolyData):
   writer = vtk.vtkPolyDataWriter()
   # writer.SetFileTypeToBinary()
@@ -176,6 +185,9 @@ def xml_from_vtk_mesh(mesh):
   # if isinstance(data, str):
   #   data = data.encode('latin1')  # ensure raw bytes
   return data
+
+################################
+## Entry
 
 async def mesh_handler(websocket:websockets.ServerConnection):
   print(f"[{websocket.remote_address}] connected")
