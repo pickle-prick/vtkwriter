@@ -198,7 +198,7 @@ async def mesh_handler(websocket:websockets.ServerConnection):
   # lut = get_vtk_lut_from_matplotlib("cividis", rng)
   # mesh = random.choice([mesh_1, mesh_2, mesh_3])
   # mesh = random.choice([mesh_1, mesh_2, mesh_3])
-  mesh = mesh_2
+  mesh = mesh_1
   while True:
     frame_begin_ms = asyncio.get_event_loop().time() * 1000
 
