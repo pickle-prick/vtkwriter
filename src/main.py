@@ -6,9 +6,6 @@ import websockets
 from dataclasses import dataclass
 from core import Reader
 import typing as t
-import Envelope.ForwardMessage
-import Envelope.Information
-import Envelope.DataObject
 from reader.fluent_cff import FluentCFFReader
 from Envelope import ForwardMessage
 from Envelope import DataObject
@@ -47,7 +44,7 @@ def stub_message(xml:str, msg_id:int) -> bytes:
   # build message
   ForwardMessage.Start(builder)
   ForwardMessage.AddKey(builder, msg_id)
-  ForwardMessage.AddTimestamp(builder, 123)
+  ForwardMessage.AddTimestamp(builder, int(time.perf_counter()*1000))
   ForwardMessage.AddInformations(builder, informations)
   msg = ForwardMessage.End(builder)
 
@@ -188,7 +185,7 @@ def xml_from_vtk_mesh(mesh):
 #   print()
 #   print(bs.decode("utf8"))
 
-async def mock(mesh_id:int, msg_id:int) -> bool:
+async def mock(mesh_id:int, msg_id:int):
   uri = "ws://localhost:8080"
 
   r = FluentCFFReader()
@@ -220,54 +217,49 @@ async def mock(mesh_id:int, msg_id:int) -> bool:
   lut.SetValueRange((0,1))
   # lut = default_lut(rng, 256*4)
 
-  ret = False
-  try:
-    async with websockets.connect(uri, max_size=None) as ws:
-      async for frame in r:
-        begin_ms = asyncio.get_event_loop().time() * 1000
-        geom = vtk.vtkGeometryFilter()
-        geom.SetInputData(frame.dataset)
-        geom.Update()
-        polydata = geom.GetOutput(0)
-        # transform.RotateX(4.5)
-        # transform_filter.SetInputData(polydata)
-        # transform_filter.Update()
-        # polydata = transform_filter.GetOutput(0)
+  async with websockets.connect(uri, max_size=None) as ws:
+    async for frame in r:
+      begin_sec = time.perf_counter()
+      geom = vtk.vtkGeometryFilter()
+      geom.SetInputData(frame.dataset)
+      geom.Update()
+      polydata = geom.GetOutput(0)
 
-        cell_to_point = vtk.vtkCellDataToPointData()
-        cell_to_point.SetInputData(polydata)
-        cell_to_point.Update()
-        polydata = cell_to_point.GetOutput()
-        apply_lut(polydata, lut, "VelocityMag")
+      # transform.RotateX(4.5)
+      # transform_filter.SetInputData(polydata)
+      # transform_filter.Update()
+      # polydata = transform_filter.GetOutput(0)
 
-        xml = xml_from_vtk_mesh(polydata)
-        bs = stub_message(xml, msg_id)
-        now = asyncio.get_event_loop().time()*1000
-        print(f"processed {now-begin_ms:.4}ms")
-        begin_ms = now
-        await ws.send(bs, text=True)
-        now = asyncio.get_event_loop().time()*1000
-        print(f"sending took {now-begin_ms:.4}ms, {len(bs)/1024/1024}mb")
-        await asyncio.sleep(1)
-        # print(f"sent: {i}")
-        # await asyncio.sleep(20/1000.0)
+      cell_to_point = vtk.vtkCellDataToPointData()
+      cell_to_point.SetInputData(polydata)
+      cell_to_point.Update()
+      polydata = cell_to_point.GetOutput()
+      apply_lut(polydata, lut, "VelocityMag")
 
-        # update mesh
-        # transform.RotateX(4.5)
-        # sink.Update()
-        # polydata = transform_filter.GetOutput()
-        # lut_applied = apply_lut(polydata, lut, "p")
-        # xml = xml_from_vtk_mesh(polydata)
-        # bs = stub_message(xml, msg_id)
+      xml = xml_from_vtk_mesh(polydata)
+      bs = stub_message(xml, msg_id)
+      print(f"processed {(time.perf_counter()-begin_sec)*1000:.4}ms")
+      begin_sec = time.perf_counter()
+      await ws.send(bs, text=True)
+      now = time.perf_counter()
+      print(f"sending took {(now-begin_sec)*1000:.4}ms, {len(bs)/(1024*1024):.2}mb")
+      # await asyncio.sleep(10/1000.0)
+      await asyncio.sleep(0.01)
+      # print(f"sent: {i}")
+      # await asyncio.sleep(20/1000.0)
 
-        # await ws.send(bs)
-        # await ws.send(bs, text=True)
-        # await ws.send("123")
-        # print(f"{frame_begin_ms}, {msg.key} {mesh_id}")
-      ret = True
-  except Exception as e:
-    print(e)
-  return ret
+      # update mesh
+      # transform.RotateX(4.5)
+      # sink.Update()
+      # polydata = transform_filter.GetOutput()
+      # lut_applied = apply_lut(polydata, lut, "p")
+      # xml = xml_from_vtk_mesh(polydata)
+      # bs = stub_message(xml, msg_id)
+
+      # await ws.send(bs)
+      # await ws.send(bs, text=True)
+      # await ws.send("123")
+      # print(f"{frame_begin_ms}, {msg.key} {mesh_id}")
 
 async def main():
   parser = argparse.ArgumentParser()
@@ -275,7 +267,13 @@ async def main():
   parser.add_argument("--mesh_id", type=int, default=0, help="mesh_id")
   args = parser.parse_args()
   print(args.mesh_id, args.msg_id)
-  await mock(args.mesh_id, args.msg_id)
+
+  while 1:
+    try:
+      await mock(args.mesh_id, args.msg_id)
+    except:
+      print("failed, try again in 3 seconds")
+      await asyncio.sleep(3.0)
 
 if __name__ == "__main__":
   asyncio.run(main())
