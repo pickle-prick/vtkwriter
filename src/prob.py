@@ -1,64 +1,56 @@
 import vtk
 import asyncio
+import time
 import argparse
 import websockets
 from dataclasses import dataclass
 import typing as t
+import Envelope.ForwardMessage
+import Envelope.Information
+import Envelope.DataObject
+from Envelope import ForwardMessage
+from Envelope import DataObject
+from Envelope import Information
+import flatbuffers
 
 FORMAT_VERSION = "0.0.1"
 
 ################################
 ## Message
 
-@dataclass
-class DataObject:
-  type_name:str
-  xml:str
+def stub_message(xml:str, msg_id:int) -> bytes:
+  builder = flatbuffers.Builder(1024)
 
-  @classmethod
-  def zero(cls):
-    return cls("","")
+  # build information
+  type_str = builder.CreateString("PolyData")
+  xml_str = builder.CreateString(xml)
+  DataObject.Start(builder)
+  DataObject.AddType(builder, type_str)
+  DataObject.AddXml(builder, xml_str)
+  data_object = DataObject.End(builder)
+  
+  Information.Start(builder)
+  Information.AddTotalFrameCount(builder, 1)
+  Information.AddTotalFrameDuration(builder, 0)
+  Information.AddFrameIndex(builder, 0)
+  Information.AddFrameTimestamp(builder, 0)
+  Information.AddDataObject(builder, data_object)
+  information = Information.End(builder)
 
-@dataclass
-class Information:
-  name:str
-  total_frame_count:int
-  frame_index:int
-  frame_timestamp:float
+  ForwardMessage.StartInformationsVector(builder, 1)
+  builder.PrependUOffsetTRelative(information)
+  informations = builder.EndVector()
 
-  @classmethod
-  def zero(cls):
-    return cls("", 0,0,0)
+  # build message
+  ForwardMessage.Start(builder)
+  ForwardMessage.AddKey(builder, msg_id)
+  ForwardMessage.AddTimestamp(builder, 123)
+  ForwardMessage.AddInformations(builder, informations)
+  msg = ForwardMessage.End(builder)
 
-@dataclass
-class Message:
-  key:int
-  information: Information
-  data_objects: t.List[DataObject]
-
-  @classmethod
-  def zero(cls):
-    ret = cls(key=0, information=Information.zero(), data_objects=[])
-    return ret
-
-def bytes_from_message(msg:Message):
-  # ret = "0\n"
-  # ret += f"format_version: str = \"{FORMAT_VERSION}\"\n"
-  # ret += f"key: s32 = {msg.key}\n"
-
-  # # Information
-  # ret += "[Information]\n"
-  # ret += f"name: str = \"{msg.information.name}\"\n"
-  # ret += f"total_frame_count: s32 = {msg.information.total_frame_count}\n"
-  # ret += f"frame_index: u32 = {msg.information.frame_index}\n"
-  # ret += f"frame_timestamp: f32 = {msg.information.frame_timestamp}\n"
-
-  # Testing
-  ret = str(msg.key)+"\n"
-  print(f"{msg.key}, {ret}")
-  ret += msg.data_objects[0].xml
-  # print(f"xml size: {len(msg.data_objects[0].xml)}")
-  return ret
+  builder.Finish(msg)
+  ret = builder.Output()
+  return bytes(ret)
 
 ################################
 ## Lut
@@ -238,29 +230,29 @@ def xml_from_vtk_mesh(mesh):
   # ret = ret.encode("utf8")
   return ret
 
-def stub_message(mesh_id:int, msg_id:int) -> Message:
-  msg = Message.zero() 
-  msg.key = msg_id
-  msg.information.name = "Cylinder"
+# def stub_message(mesh_id:int, msg_id:int) -> Message:
+#   msg = Message.zero() 
+#   msg.key = msg_id
+#   msg.information.name = "Cylinder"
+# 
+#   src = mesh_cylinder()
+#   if mesh_id == 0: src = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
+#   if mesh_id == 1: src = mesh_compund()
+#   if mesh_id == 2: pass
+#   src.Update()
+# 
+#   mesh = src.GetOutput()
+#   xml = xml_from_vtk_mesh(mesh)
+#   msg.data_objects.append(DataObject("PolyData", xml))
+#   return msg
 
-  src = mesh_cylinder()
-  if mesh_id == 0: src = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
-  if mesh_id == 1: src = mesh_compund()
-  if mesh_id == 2: pass
-  src.Update()
-
-  mesh = src.GetOutput()
-  xml = xml_from_vtk_mesh(mesh)
-  msg.data_objects.append(DataObject("PolyData", xml))
-  return msg
-
-def test():
-  msg = stub_message()
-
-  bs = bytes_from_message(msg) 
-  print(bs)
-  print()
-  print(bs.decode("utf8"))
+# def test():
+#   msg = stub_message()
+# 
+#   bs = bytes_from_message(msg) 
+#   print(bs)
+#   print()
+#   print(bs.decode("utf8"))
 
 async def mock(mesh_id:int, msg_id:int):
   uri = "ws://localhost:8080"
@@ -292,10 +284,6 @@ async def mock(mesh_id:int, msg_id:int):
         while 1:
           frame_begin_ms = asyncio.get_event_loop().time() * 1000
 
-          msg = Message.zero() 
-          msg.key = msg_id
-          msg.information.name = "Cylinder"
-
           # update mesh
           transform.RotateX(4.5)
           sink.Update()
@@ -319,21 +307,20 @@ async def mock(mesh_id:int, msg_id:int):
           #   polydata.GetPointData().SetScalars(colors)
 
           xml = xml_from_vtk_mesh(polydata)
-          msg.data_objects.append(DataObject("PolyData", xml))
-          bs:bytes = bytes_from_message(msg).encode("utf8")
+          bs = stub_message(xml, msg_id)
 
           # await ws.send(bs)
           await ws.send(bs, text=True)
           # await ws.send("123")
-          print(f"{frame_begin_ms}, {msg.key} {mesh_id}")
+          # print(f"{frame_begin_ms}, {msg.key} {mesh_id}")
           await asyncio.sleep(0.0)
-    except:
+    except Exception as e:
       await asyncio.sleep(3)
 
 async def main():
   parser = argparse.ArgumentParser()
-  parser.add_argument("msg_id", type=int, default=0, help="msg_id")
-  parser.add_argument("mesh_id", type=int, default=0, help="mesh_id")
+  parser.add_argument("--msg_id", type=int, default=0, help="msg_id")
+  parser.add_argument("--mesh_id", type=int, default=0, help="mesh_id")
   args = parser.parse_args()
   print(args.mesh_id, args.msg_id)
   await mock(args.mesh_id, args.msg_id)

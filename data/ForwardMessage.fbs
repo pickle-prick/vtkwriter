@@ -1,0 +1,26 @@
+namespace Envelope;
+
+table DataObject
+{
+  type:string;
+  xml:string;
+}
+
+table Information
+{
+  total_frame_count:uint64;
+  total_frame_duration:float;
+  // ensemble members, data blocks
+  frame_index:uint64;
+  frame_timestamp:float;
+  data_object:DataObject;
+}
+
+table ForwardMessage
+{
+  key:uint64;
+  timestamp:uint64;
+  informations:[Information];
+}
+
+root_type ForwardMessage;

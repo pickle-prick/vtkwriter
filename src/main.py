@@ -1,0 +1,281 @@
+import vtk
+import asyncio
+import time
+import argparse
+import websockets
+from dataclasses import dataclass
+from core import Reader
+import typing as t
+import Envelope.ForwardMessage
+import Envelope.Information
+import Envelope.DataObject
+from reader.fluent_cff import FluentCFFReader
+from Envelope import ForwardMessage
+from Envelope import DataObject
+from Envelope import Information
+from lut import lut_from_name, apply_lut, default_lut
+import flatbuffers
+
+FORMAT_VERSION = "0.0.1"
+
+################################
+## Message
+
+def stub_message(xml:str, msg_id:int) -> bytes:
+  builder = flatbuffers.Builder(1024)
+
+  # build information
+  type_str = builder.CreateString("PolyData")
+  xml_str = builder.CreateString(xml)
+  DataObject.Start(builder)
+  DataObject.AddType(builder, type_str)
+  DataObject.AddXml(builder, xml_str)
+  data_object = DataObject.End(builder)
+  
+  Information.Start(builder)
+  Information.AddTotalFrameCount(builder, 1)
+  Information.AddTotalFrameDuration(builder, 0)
+  Information.AddFrameIndex(builder, 0)
+  Information.AddFrameTimestamp(builder, 0)
+  Information.AddDataObject(builder, data_object)
+  information = Information.End(builder)
+
+  ForwardMessage.StartInformationsVector(builder, 1)
+  builder.PrependUOffsetTRelative(information)
+  informations = builder.EndVector()
+
+  # build message
+  ForwardMessage.Start(builder)
+  ForwardMessage.AddKey(builder, msg_id)
+  ForwardMessage.AddTimestamp(builder, 123)
+  ForwardMessage.AddInformations(builder, informations)
+  msg = ForwardMessage.End(builder)
+
+  builder.Finish(msg)
+  ret = builder.Output()
+  return bytes(ret)
+
+################################
+## Mesh
+
+def mesh_from_vtk_legacy(path:str):
+  reader = vtk.vtkPolyDataReader()
+  reader.SetFileName(path)
+  decimate = vtk.vtkDecimatePro()
+  decimate.SetInputConnection(reader.GetOutputPort(0))
+  decimate.SetTargetReduction(0.99)
+  decimate.PreserveTopologyOn()
+  return decimate
+
+def mesh_cylinder():
+  cylinder = vtk.vtkCylinderSource()
+  cylinder.SetResolution(8)
+  return cylinder
+
+def mesh_compund():
+  # Cylinder
+  cylinder = vtk.vtkCylinderSource()
+  cylinder.SetResolution(16)
+  cylinder.SetHeight(2.0)
+  cylinder.SetRadius(0.5)
+  cylinder.Update()
+
+  # Sphere
+  sphere = vtk.vtkSphereSource()
+  sphere.SetRadius(0.6)
+  sphere.SetThetaResolution(16)
+  sphere.SetPhiResolution(16)
+  sphere.SetCenter(0, 0, 1.0)
+  sphere.Update()
+
+  # Cone
+  cone = vtk.vtkConeSource()
+  cone.SetHeight(1.0)
+  cone.SetRadius(0.3)
+  cone.SetResolution(16)
+  cone.SetCenter(0, 0, -1.0)
+  cone.Update()
+
+  # -------------------------
+  # 2. Transform each primitive
+  # -------------------------
+  transform = vtk.vtkTransform()
+  transform.RotateX(30)
+  transform_filter = vtk.vtkTransformPolyDataFilter()
+  transform_filter.SetTransform(transform)
+  transform_filter.SetInputConnection(sphere.GetOutputPort())
+  transform_filter.Update()
+
+  # -------------------------
+  # 3. Combine meshes
+  # -------------------------
+  append_filter = vtk.vtkAppendPolyData()
+  append_filter.AddInputData(cylinder.GetOutput())
+  append_filter.AddInputData(transform_filter.GetOutput())
+  append_filter.AddInputData(cone.GetOutput())
+  append_filter.Update()
+
+  # -------------------------
+  # 4. Clean & triangulate
+  # -------------------------
+  clean_filter = vtk.vtkCleanPolyData()
+  clean_filter.SetInputConnection(append_filter.GetOutputPort())
+  clean_filter.Update()
+
+  triangulate = vtk.vtkTriangleFilter()
+  triangulate.SetInputConnection(clean_filter.GetOutputPort())
+  triangulate.Update()
+
+  # -------------------------
+  # 5. Compute normals
+  # -------------------------
+  normals = vtk.vtkPolyDataNormals()
+  normals.SetInputConnection(triangulate.GetOutputPort())
+  normals.ComputePointNormalsOn()
+  normals.Update()
+  return normals
+
+################################
+## Serialization
+
+def legacy_from_vtk_mesh(mesh:vtk.vtkPolyData):
+  writer = vtk.vtkPolyDataWriter()
+  # writer.SetFileTypeToBinary()
+  writer.SetFileTypeToASCII()
+  writer.SetInputData(mesh)
+  writer.SetWriteToOutputString(True)
+  writer.Write()
+  data = writer.GetOutputString()
+  return data
+
+def xml_from_vtk_mesh(mesh):
+  """
+  Serialize a vtkPolyData mesh to bytes using modern XML VTK format (.vtp).
+  Returns raw bytes suitable for sending over network.
+  """
+  writer = vtk.vtkXMLPolyDataWriter()
+  writer.SetInputData(mesh)
+  writer.SetDataModeToBinary()      # Binary XML format
+  writer.WriteToOutputStringOn()    # Write to memory buffer
+  writer.SetCompressorTypeToLZ4()
+  writer.Write()
+
+  ret = writer.GetOutputString()   # VTK returns bytes or str depending on version
+  # ret = ret.encode("utf8")
+  return ret
+
+# def stub_message(mesh_id:int, msg_id:int) -> Message:
+#   msg = Message.zero() 
+#   msg.key = msg_id
+#   msg.information.name = "Cylinder"
+# 
+#   src = mesh_cylinder()
+#   if mesh_id == 0: src = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
+#   if mesh_id == 1: src = mesh_compund()
+#   if mesh_id == 2: pass
+#   src.Update()
+# 
+#   mesh = src.GetOutput()
+#   xml = xml_from_vtk_mesh(mesh)
+#   msg.data_objects.append(DataObject("PolyData", xml))
+#   return msg
+
+# def test():
+#   msg = stub_message()
+# 
+#   bs = bytes_from_message(msg) 
+#   print(bs)
+#   print()
+#   print(bs.decode("utf8"))
+
+async def mock(mesh_id:int, msg_id:int) -> bool:
+  uri = "ws://localhost:8080"
+
+  r = FluentCFFReader()
+  r.read_project("./data/Fluent-result")
+  # r.read_project("./data/3D-Pipe")
+
+  # mesh = mesh_cylinder()
+  # if mesh_id == 0: mesh = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
+  # if mesh_id == 1: mesh = mesh_compund()
+  # if mesh_id == 2: pass
+
+  # # pipeline
+  # tail = mesh
+  # if mesh_id == 0:
+  #   tail = vtk.vtkReverseSense()
+  #   tail.SetInputConnection(mesh.GetOutputPort())
+  #   # tail.ReverseNormalsOn()
+
+  transform = vtk.vtkTransform()
+  transform_filter = vtk.vtkTransformPolyDataFilter()
+  transform_filter.SetTransform(transform)
+  # transform_filter.SetInputConnection(tail.GetOutputPort())
+  # sink = transform_filter
+
+  # # lut
+  # rng = (-2321.6083984375, 1010.710693359375)
+
+  lut = lut_from_name("inferno")
+  lut.SetValueRange((0,1))
+  # lut = default_lut(rng, 256*4)
+
+  ret = False
+  try:
+    async with websockets.connect(uri, max_size=None) as ws:
+      async for frame in r:
+        begin_ms = asyncio.get_event_loop().time() * 1000
+        geom = vtk.vtkGeometryFilter()
+        geom.SetInputData(frame.dataset)
+        geom.Update()
+        polydata = geom.GetOutput(0)
+        # transform.RotateX(4.5)
+        # transform_filter.SetInputData(polydata)
+        # transform_filter.Update()
+        # polydata = transform_filter.GetOutput(0)
+
+        cell_to_point = vtk.vtkCellDataToPointData()
+        cell_to_point.SetInputData(polydata)
+        cell_to_point.Update()
+        polydata = cell_to_point.GetOutput()
+        apply_lut(polydata, lut, "VelocityMag")
+
+        xml = xml_from_vtk_mesh(polydata)
+        bs = stub_message(xml, msg_id)
+        now = asyncio.get_event_loop().time()*1000
+        print(f"processed {now-begin_ms:.4}ms")
+        begin_ms = now
+        await ws.send(bs, text=True)
+        now = asyncio.get_event_loop().time()*1000
+        print(f"sending took {now-begin_ms:.4}ms, {len(bs)/1024/1024}mb")
+        await asyncio.sleep(1)
+        # print(f"sent: {i}")
+        # await asyncio.sleep(20/1000.0)
+
+        # update mesh
+        # transform.RotateX(4.5)
+        # sink.Update()
+        # polydata = transform_filter.GetOutput()
+        # lut_applied = apply_lut(polydata, lut, "p")
+        # xml = xml_from_vtk_mesh(polydata)
+        # bs = stub_message(xml, msg_id)
+
+        # await ws.send(bs)
+        # await ws.send(bs, text=True)
+        # await ws.send("123")
+        # print(f"{frame_begin_ms}, {msg.key} {mesh_id}")
+      ret = True
+  except Exception as e:
+    print(e)
+  return ret
+
+async def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--msg_id", type=int, default=0, help="msg_id")
+  parser.add_argument("--mesh_id", type=int, default=0, help="mesh_id")
+  args = parser.parse_args()
+  print(args.mesh_id, args.msg_id)
+  await mock(args.mesh_id, args.msg_id)
+
+if __name__ == "__main__":
+  asyncio.run(main())
