@@ -22,13 +22,13 @@ def apply_lut(mesh:vtk.vtkPolyData, lut:vtk.vtkLookupTable, scalar:str|None = No
     array = point_data.GetScalars()
 
   if not array: return 0
-  # rng = array.GetRange()
-  # lut.SetTableRange(rng)
-  # color_array = lut.MapScalars(array, vtk.VTK_COLOR_MODE_DEFAULT, -1)
-  # color_array.SetName("Colors")
-  # point_data.AddArray(color_array)
-  # point_data.SetScalars(color_array)
-  # return 1 
+  rng = array.GetRange()
+  lut.SetTableRange(rng)
+  color_array = lut.MapScalars(array, vtk.VTK_COLOR_MODE_DEFAULT, -1)
+  color_array.SetName("Colors")
+  point_data.AddArray(color_array)
+  point_data.SetScalars(color_array)
+  return 1 
 
 #   color_array = vtk.vtkUnsignedCharArray()
 #   color_array.SetNumberOfComponents(3)
@@ -40,25 +40,25 @@ def apply_lut(mesh:vtk.vtkPolyData, lut:vtk.vtkLookupTable, scalar:str|None = No
 #   point_data.AddArray(color_array)
 #   point_data.SetScalars(color_array)
 
-  if array:
-    ret = 1
-    color_array = vtk.vtkUnsignedCharArray()
-    color_array.SetNumberOfComponents(3)
-    color_array.SetName("Colors")
+  # if array:
+  #   ret = 1
+  #   color_array = vtk.vtkUnsignedCharArray()
+  #   color_array.SetNumberOfComponents(3)
+  #   color_array.SetName("Colors")
 
-    value_rng = lut.GetValueRange()
-    value_dim = value_rng[1]-value_rng[0]
-    color_count:int = lut.GetNumberOfColors()
-    for i in range(array.GetNumberOfTuples()):
-      value = array.GetValue(i)
-      normalized_value = ((value-value_rng[0])/value_dim)
-      color_index = int(normalized_value*(color_count-1))
-      color = lut.GetTableValue(color_index)
-      # color_array.InsertNextTuple3(0,255,0)
-      color_array.InsertNextTuple3(int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))
-    # mesh.GetFieldData().AddArray(color_array)
-    point_data.AddArray(color_array)
-    # point_data.SetScalars(color_array)
+  #   value_rng = lut.GetValueRange()
+  #   value_dim = value_rng[1]-value_rng[0]
+  #   color_count:int = lut.GetNumberOfColors()
+  #   for i in range(array.GetNumberOfTuples()):
+  #     value = array.GetValue(i)
+  #     normalized_value = ((value-value_rng[0])/value_dim)
+  #     color_index = int(normalized_value*(color_count-1))
+  #     color = lut.GetTableValue(color_index)
+  #     # color_array.InsertNextTuple3(0,255,0)
+  #     color_array.InsertNextTuple3(int(color[0] * 255), int(color[1] * 255), int(color[2] * 255))
+  #   # mesh.GetFieldData().AddArray(color_array)
+  #   point_data.AddArray(color_array)
+  #   # point_data.SetScalars(color_array)
 
 def default_lut(rng:tuple[int,int], table_size=256) -> vtk.vtkLookupTable:
   lut = vtk.vtkLookupTable()

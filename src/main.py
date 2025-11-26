@@ -1,4 +1,5 @@
 import vtk
+import struct
 import asyncio
 import time
 import argparse
@@ -14,6 +15,9 @@ from lut import lut_from_name, apply_lut, default_lut
 import flatbuffers
 
 FORMAT_VERSION = "0.0.1"
+HOST = "10.0.0.243"
+# HOST = "127.0.0.1"
+PORT = 8080
 
 ################################
 ## Message
@@ -186,8 +190,6 @@ def xml_from_vtk_mesh(mesh):
 #   print(bs.decode("utf8"))
 
 async def mock(mesh_id:int, msg_id:int):
-  uri = "ws://localhost:8080"
-
   r = FluentCFFReader()
   r.read_project("./data/Fluent-result")
   # r.read_project("./data/3D-Pipe")
@@ -217,7 +219,8 @@ async def mock(mesh_id:int, msg_id:int):
   lut.SetValueRange((0,1))
   # lut = default_lut(rng, 256*4)
 
-  async with websockets.connect(uri, max_size=None) as ws:
+  try:
+    reader, writer = await asyncio.open_connection(HOST, PORT)
     async for frame in r:
       begin_sec = time.perf_counter()
       geom = vtk.vtkGeometryFilter()
@@ -225,10 +228,10 @@ async def mock(mesh_id:int, msg_id:int):
       geom.Update()
       polydata = geom.GetOutput(0)
 
-      # transform.RotateX(4.5)
-      # transform_filter.SetInputData(polydata)
-      # transform_filter.Update()
-      # polydata = transform_filter.GetOutput(0)
+      transform.RotateX(0.15)
+      transform_filter.SetInputData(polydata)
+      transform_filter.Update()
+      polydata = transform_filter.GetOutput(0)
 
       cell_to_point = vtk.vtkCellDataToPointData()
       cell_to_point.SetInputData(polydata)
@@ -240,13 +243,14 @@ async def mock(mesh_id:int, msg_id:int):
       bs = stub_message(xml, msg_id)
       print(f"processed {(time.perf_counter()-begin_sec)*1000:.4}ms")
       begin_sec = time.perf_counter()
-      await ws.send(bs, text=True)
+      header = len(bs)
+      header_bytes = struct.pack("=Q", header)
+      writer.write(header_bytes+bs)
+      await writer.drain()
       now = time.perf_counter()
-      print(f"sending took {(now-begin_sec)*1000:.4}ms, {len(bs)/(1024*1024):.2}mb")
-      # await asyncio.sleep(10/1000.0)
-      await asyncio.sleep(0.01)
+      print(f"sending took {(now-begin_sec)*1000:.4}ms, {len(bs)/(1024*1024):.2}mb, {len(bs)}bytes")
+      await asyncio.sleep(0.0)
       # print(f"sent: {i}")
-      # await asyncio.sleep(20/1000.0)
 
       # update mesh
       # transform.RotateX(4.5)
@@ -260,6 +264,10 @@ async def mock(mesh_id:int, msg_id:int):
       # await ws.send(bs, text=True)
       # await ws.send("123")
       # print(f"{frame_begin_ms}, {msg.key} {mesh_id}")
+  finally:
+    if writer:
+      writer.close()
+      await writer.wait_closed()
 
 async def main():
   parser = argparse.ArgumentParser()
@@ -271,7 +279,8 @@ async def main():
   while 1:
     try:
       await mock(args.mesh_id, args.msg_id)
-    except:
+    except Exception as e:
+      print(e)
       print("failed, try again in 3 seconds")
       await asyncio.sleep(3.0)
 

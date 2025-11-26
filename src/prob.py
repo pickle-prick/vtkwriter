@@ -14,6 +14,8 @@ from Envelope import Information
 import flatbuffers
 
 FORMAT_VERSION = "0.0.1"
+HOST = "10.0.0.243"
+PORT = 8080
 
 ################################
 ## Message
@@ -255,7 +257,7 @@ def xml_from_vtk_mesh(mesh):
 #   print(bs.decode("utf8"))
 
 async def mock(mesh_id:int, msg_id:int):
-  uri = "ws://localhost:8080"
+  uri = f"ws://{HOST}:{PORT}"
   mesh = mesh_cylinder()
   if mesh_id == 0: mesh = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
   if mesh_id == 1: mesh = mesh_compund()
