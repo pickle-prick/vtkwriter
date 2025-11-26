@@ -219,6 +219,7 @@ async def mock(mesh_id:int, msg_id:int):
   lut.SetValueRange((0,1))
   # lut = default_lut(rng, 256*4)
 
+  writer = None
   try:
     reader, writer = await asyncio.open_connection(HOST, PORT)
     async for frame in r:
