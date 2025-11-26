@@ -10,25 +10,41 @@ from Envelope.ForwardMessage import ForwardMessage
 from Envelope.DataObject import DataObject
 from Envelope.Information import Information
 from threading import Thread, Event, Lock
+from dataclasses import dataclass
+import typing as t
+
+@dataclass
+class Frame:
+  timestamp:float
+  xml:str
+
+frames:t.List[Frame] = []
 
 stop_evt = Event()
 lck = Lock()
-mapper = vtk.vtkPolyDataMapper()
-# mapper.SetArrayName("Colors")
-# mapper.SetScalarModeToUsePointData()
-mapper.SetScalarVisibility(1)
-mapper.SelectColorArray("Colors")
-mapper.SetScalarMode(vtk.VTK_SCALAR_MODE_USE_POINT_FIELD_DATA)
-# mapper.SetScalarMode(vtk.VTK_SCALAR_MODE_USE_POINT_DATA) # only active scalar
-mapper.SetColorModeToDirectScalars()
+clock_begin_ms = 0
+clock_started = False
 
 def render_worker():
+  global clock_begin_ms
+  global clock_started
+
   c = vtk.vtkCylinderSource()
   c.SetResolution(8)
   c.Update()
 
+  reader = vtk.vtkXMLPolyDataReader()
+  reader.ReadFromInputStringOn()
+
   # mapper.SetInputConnection(c.GetOutputPort())
-  global mapper
+  mapper = vtk.vtkPolyDataMapper()
+  # mapper.SetArrayName("Colors")
+  # mapper.SetScalarModeToUsePointData()
+  mapper.SetScalarVisibility(1)
+  mapper.SelectColorArray("Colors")
+  mapper.SetScalarMode(vtk.VTK_SCALAR_MODE_USE_POINT_FIELD_DATA)
+  # mapper.SetScalarMode(vtk.VTK_SCALAR_MODE_USE_POINT_DATA) # only active scalar
+  mapper.SetColorModeToDirectScalars()
   mapper.SetInputData(c.GetOutput(0))
   actor = vtk.vtkActor()
   actor.SetMapper(mapper)
@@ -53,25 +69,57 @@ def render_worker():
   # timer_id = iren.CreateRepeatingTimer(1)
   # iren.Start()
 
-  last_mtime = 0
   while not stop_evt.is_set():
     try:
       with lck:
+        # Testing
+        for idx, f in enumerate(frames):
+          prev = None
+          if idx > 0: prev = frames[idx-1]
+          next = None
+          if idx < (len(frames)-1): next = frames[idx+1]
+          if prev: assert f.timestamp > prev.timestamp
+          if next: assert f.timestamp < next.timestamp
+
+        if clock_started:
+          elapsed_ms = time.perf_counter()*1000-clock_begin_ms
+          # find the frame
+          frame = None
+          frame_idx = -1
+          for idx, f in enumerate(frames):
+            if elapsed_ms < f.timestamp:
+              break
+            else:
+              frame = f 
+              frame_dx = idx
+
+          if frame:
+            print(f"Frame {frame_idx} picked")
+            reader.SetInputString(frame.xml)
+            reader.Update()
+            mapper.SetInputData(reader.GetOutput())
+            mapper.Modified()
+            mapper.Update()
+          
         iren.ProcessEvents()
-        m_time = mapper.GetMTime()
-        # FIXME: this will cause crashing
-        if m_time > last_mtime:win.Render()
-        last_mtime = m_time
+        win.Render()
         # NOTE: do this to release python GIL lock
         time.sleep(0)
         # iren.Start()
         # iren.DestroyTimer(timer_id)
     except Exception as e:
       print(e)
+      raise
 
 async def handle_message(websocket: ServerConnection):
-  reader = vtk.vtkXMLPolyDataReader()
-  reader.ReadFromInputStringOn()
+  global clock_begin_ms
+  global clock_started
+  global frames
+  print("client connection")
+  with lck:
+    clock_started = False
+    clock_begin_ms = 0
+    frames = []
   while not stop_evt.is_set():
     try:
       raw = await websocket.recv(decode=False)
@@ -88,17 +136,15 @@ async def handle_message(websocket: ServerConnection):
     print(information.TotalFrameDuration())
     data_object = information.DataObject()
     xml = data_object.Xml()
+    frame_timestamp:float = information.FrameTimestamp()
     assert isinstance(xml, bytes)
     # NOTE(k): we have to this lock, otherwise vtk could crash
     # seem like we can't call vtk in another thread
     with lck:
-      reader.SetInputString(xml.decode("utf8"))
-      reader.Update()
-      poly: vtk.vtkPolyData = reader.GetOutput(0)
-      assert isinstance(poly, vtk.vtkPolyData)
-      # attr = poly.GetPointData()
-      mapper.SetInputData(reader.GetOutput(0))
-      mapper.Modified()
+      frames.append(Frame(frame_timestamp, xml.decode("utf8")))
+      if not clock_started:
+        clock_started=True
+        clock_begin_ms = time.perf_counter()*1000.0
 
 def message_worker():
   host = "localhost"

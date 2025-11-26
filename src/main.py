@@ -15,14 +15,14 @@ from lut import lut_from_name, apply_lut, default_lut
 import flatbuffers
 
 FORMAT_VERSION = "0.0.1"
-HOST = "10.0.0.243"
-# HOST = "127.0.0.1"
+# HOST = "10.0.0.243"
+HOST = "127.0.0.1"
 PORT = 8080
 
 ################################
 ## Message
 
-def stub_message(xml:str, msg_id:int) -> bytes:
+def stub_message(xml:str, msg_id:int, timestamp:float) -> bytes:
   builder = flatbuffers.Builder(1024)
 
   # build information
@@ -37,7 +37,7 @@ def stub_message(xml:str, msg_id:int) -> bytes:
   Information.AddTotalFrameCount(builder, 1)
   Information.AddTotalFrameDuration(builder, 0)
   Information.AddFrameIndex(builder, 0)
-  Information.AddFrameTimestamp(builder, 0)
+  Information.AddFrameTimestamp(builder, timestamp)
   Information.AddDataObject(builder, data_object)
   information = Information.End(builder)
 
@@ -189,7 +189,81 @@ def xml_from_vtk_mesh(mesh):
 #   print()
 #   print(bs.decode("utf8"))
 
-async def mock(mesh_id:int, msg_id:int):
+async def mock_ws(mesh_id:int, msg_id:int):
+  r = FluentCFFReader()
+  r.read_project("./data/Fluent-result")
+  # r.read_project("./data/3D-Pipe")
+
+  # mesh = mesh_cylinder()
+  # if mesh_id == 0: mesh = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
+  # if mesh_id == 1: mesh = mesh_compund()
+  # if mesh_id == 2: pass
+
+  # # pipeline
+  # tail = mesh
+  # if mesh_id == 0:
+  #   tail = vtk.vtkReverseSense()
+  #   tail.SetInputConnection(mesh.GetOutputPort())
+  #   # tail.ReverseNormalsOn()
+
+  transform = vtk.vtkTransform()
+  transform_filter = vtk.vtkTransformPolyDataFilter()
+  transform_filter.SetTransform(transform)
+  # transform_filter.SetInputConnection(tail.GetOutputPort())
+  # sink = transform_filter
+
+  # # lut
+  # rng = (-2321.6083984375, 1010.710693359375)
+
+  lut = lut_from_name("inferno")
+  lut.SetValueRange((0,1))
+  # lut = default_lut(rng, 256*4)
+
+  writer = None
+  uri = f"ws://{HOST}:{PORT}"
+  async with websockets.connect(uri, max_size=None) as ws:
+    async for frame in r:
+      begin_sec = time.perf_counter()
+      geom = vtk.vtkGeometryFilter()
+      geom.SetInputData(frame.dataset)
+      geom.Update()
+      polydata = geom.GetOutput(0)
+
+      transform.RotateX(0.15)
+      transform_filter.SetInputData(polydata)
+      transform_filter.Update()
+      polydata = transform_filter.GetOutput(0)
+
+      cell_to_point = vtk.vtkCellDataToPointData()
+      cell_to_point.SetInputData(polydata)
+      cell_to_point.Update()
+      polydata = cell_to_point.GetOutput()
+      apply_lut(polydata, lut, "VelocityMag")
+
+      xml = xml_from_vtk_mesh(polydata)
+      bs = stub_message(xml, msg_id, frame.frame_index*0.02*1000)
+      print(f"processed {(time.perf_counter()-begin_sec)*1000:.4}ms")
+      begin_sec = time.perf_counter()
+      await ws.send(bs, text=True)
+      now = time.perf_counter()
+      print(f"sending took {(now-begin_sec)*1000:.4}ms, {len(bs)/(1024*1024):.2}mb, {len(bs)}bytes")
+      await asyncio.sleep(0.0)
+      # print(f"sent: {i}")
+
+      # update mesh
+      # transform.RotateX(4.5)
+      # sink.Update()
+      # polydata = transform_filter.GetOutput()
+      # lut_applied = apply_lut(polydata, lut, "p")
+      # xml = xml_from_vtk_mesh(polydata)
+      # bs = stub_message(xml, msg_id)
+
+      # await ws.send(bs)
+      # await ws.send(bs, text=True)
+      # await ws.send("123")
+      # print(f"{frame_begin_ms}, {msg.key} {mesh_id}")
+  
+async def mock_tcp(mesh_id:int, msg_id:int):
   r = FluentCFFReader()
   r.read_project("./data/Fluent-result")
   # r.read_project("./data/3D-Pipe")
@@ -279,7 +353,9 @@ async def main():
 
   while 1:
     try:
-      await mock(args.mesh_id, args.msg_id)
+      await mock_ws(args.mesh_id, args.msg_id)
+      print("OK")
+      break
     except Exception as e:
       print(e)
       print("failed, try again in 3 seconds")
