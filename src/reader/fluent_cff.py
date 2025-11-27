@@ -199,7 +199,7 @@ class FluentCFFReader(Reader):
     np_wrapper = numpy_support.vtk_to_numpy(vtk_array)
     np_wrapper[:] = vel_mag
 
-    ret = Frame(info, index, dataset)
+    ret = Frame(info, index, index*0.02, dataset)
     return ret
 
   def __len__(self) -> int:

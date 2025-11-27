@@ -1,5 +1,11 @@
 namespace Envelope;
 
+table PipelineInformation
+{
+  frame_count:uint64;
+  // ensemble members, data blocks
+}
+
 table DataObject
 {
   type:string;
@@ -8,11 +14,8 @@ table DataObject
 
 table Information
 {
-  total_frame_count:uint64;
-  total_frame_duration:float;
-  // ensemble members, data blocks
   frame_index:uint64;
-  frame_timestamp:float;
+  frame_timestep:float;
   data_object:DataObject;
 }
 
@@ -20,6 +23,7 @@ table ForwardMessage
 {
   key:uint64;
   timestamp:uint64;
+  pipeline_info:PipelineInformation;
   informations:[Information];
 }
 

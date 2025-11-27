@@ -22,13 +22,13 @@ def apply_lut(mesh:vtk.vtkPolyData, lut:vtk.vtkLookupTable, scalar:str|None = No
     array = point_data.GetScalars()
 
   if not array: return 0
-  # rng = array.GetRange()
-  # lut.SetTableRange(rng)
-  # color_array = lut.MapScalars(array, vtk.VTK_COLOR_MODE_DEFAULT, -1)
-  # color_array.SetName("Colors")
-  # point_data.AddArray(color_array)
-  ## point_data.SetScalars(color_array)
-  # return 1 
+  rng = array.GetRange()
+  lut.SetTableRange(rng)
+  color_array = lut.MapScalars(array, vtk.VTK_COLOR_MODE_DEFAULT, -1)
+  color_array.SetName("Colors")
+  point_data.AddArray(color_array)
+  # point_data.SetScalars(color_array)
+  return 1 
 
 #   color_array = vtk.vtkUnsignedCharArray()
 #   color_array.SetNumberOfComponents(3)

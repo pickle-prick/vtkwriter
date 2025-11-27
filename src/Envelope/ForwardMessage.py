@@ -39,8 +39,19 @@ class ForwardMessage(object):
         return 0
 
     # ForwardMessage
-    def Informations(self, j):
+    def PipelineInfo(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
+        if o != 0:
+            x = self._tab.Indirect(o + self._tab.Pos)
+            from Envelope.PipelineInformation import PipelineInformation
+            obj = PipelineInformation()
+            obj.Init(self._tab.Bytes, x)
+            return obj
+        return None
+
+    # ForwardMessage
+    def Informations(self, j):
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         if o != 0:
             x = self._tab.Vector(o)
             x += flatbuffers.number_types.UOffsetTFlags.py_type(j) * 4
@@ -53,18 +64,18 @@ class ForwardMessage(object):
 
     # ForwardMessage
     def InformationsLength(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         if o != 0:
             return self._tab.VectorLen(o)
         return 0
 
     # ForwardMessage
     def InformationsIsNone(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         return o == 0
 
 def ForwardMessageStart(builder):
-    builder.StartObject(3)
+    builder.StartObject(4)
 
 def Start(builder):
     ForwardMessageStart(builder)
@@ -81,8 +92,14 @@ def ForwardMessageAddTimestamp(builder, timestamp):
 def AddTimestamp(builder, timestamp):
     ForwardMessageAddTimestamp(builder, timestamp)
 
+def ForwardMessageAddPipelineInfo(builder, pipelineInfo):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(pipelineInfo), 0)
+
+def AddPipelineInfo(builder, pipelineInfo):
+    ForwardMessageAddPipelineInfo(builder, pipelineInfo)
+
 def ForwardMessageAddInformations(builder, informations):
-    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(informations), 0)
+    builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(informations), 0)
 
 def AddInformations(builder, informations):
     ForwardMessageAddInformations(builder, informations)

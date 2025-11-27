@@ -8,47 +8,63 @@ from dataclasses import dataclass
 from core import Reader
 import typing as t
 from reader.fluent_cff import FluentCFFReader
-from Envelope import ForwardMessage
-from Envelope import DataObject
-from Envelope import Information
+from Envelope import ForwardMessage, DataObject, Information, PipelineInformation
 from lut import lut_from_name, apply_lut, default_lut
 import flatbuffers
 
 FORMAT_VERSION = "0.0.1"
-# HOST = "10.0.0.243"
-HOST = "127.0.0.1"
+HOST = "10.0.0.243"
+# HOST = "127.0.0.1"
 PORT = 8080
 
 ################################
 ## Message
 
-def stub_message(xml:str, msg_id:int, timestamp:float) -> bytes:
+@dataclass
+class FrameInfo:
+  index:int
+  timestep:float
+  xml:str
+
+@dataclass
+class MessageRecipe:
+  total_frame_count:int
+  frames:t.List[FrameInfo]
+
+def cooke_message(msg_id:int, recipe:MessageRecipe) -> bytes:
   builder = flatbuffers.Builder(1024)
 
-  # build information
-  type_str = builder.CreateString("PolyData")
-  xml_str = builder.CreateString(xml)
-  DataObject.Start(builder)
-  DataObject.AddType(builder, type_str)
-  DataObject.AddXml(builder, xml_str)
-  data_object = DataObject.End(builder)
-  
-  Information.Start(builder)
-  Information.AddTotalFrameCount(builder, 1)
-  Information.AddTotalFrameDuration(builder, 0)
-  Information.AddFrameIndex(builder, 0)
-  Information.AddFrameTimestamp(builder, timestamp)
-  Information.AddDataObject(builder, data_object)
-  information = Information.End(builder)
+  # build pipeline information
+  PipelineInformation.Start(builder)
+  PipelineInformation.AddFrameCount(builder, recipe.total_frame_count)
+  pipeline_info = PipelineInformation.End(builder)
 
-  ForwardMessage.StartInformationsVector(builder, 1)
-  builder.PrependUOffsetTRelative(information)
+  frame_infos = []
+  for frame in recipe.frames:
+    type_str = builder.CreateString("PolyData") # TODO: support other types, do we really need this?
+    xml_str = builder.CreateString(frame.xml)
+    DataObject.Start(builder)
+    DataObject.AddType(builder, type_str)
+    DataObject.AddXml(builder, xml_str)
+    data_object = DataObject.End(builder)
+    
+    Information.Start(builder)
+    Information.AddFrameIndex(builder, frame.index)
+    Information.AddFrameTimestep(builder, frame.timestep)
+    Information.AddDataObject(builder, data_object)
+    frame_info = Information.End(builder)
+    frame_infos.append(frame_info)
+
+  ForwardMessage.StartInformationsVector(builder, len(frame_infos))
+  for frame_info in frame_infos:
+    builder.PrependUOffsetTRelative(frame_info)
   informations = builder.EndVector()
 
   # build message
   ForwardMessage.Start(builder)
   ForwardMessage.AddKey(builder, msg_id)
-  ForwardMessage.AddTimestamp(builder, int(time.perf_counter()*1000))
+  ForwardMessage.AddTimestamp(builder, int(time.time())) # TODO: check it later, should we use unix timestamp?
+  ForwardMessage.AddPipelineInfo(builder, pipeline_info)
   ForwardMessage.AddInformations(builder, informations)
   msg = ForwardMessage.End(builder)
 
@@ -296,6 +312,7 @@ async def mock_tcp(mesh_id:int, msg_id:int):
   writer = None
   try:
     reader, writer = await asyncio.open_connection(HOST, PORT)
+    total_frame_count = len(r)
     async for frame in r:
       begin_sec = time.perf_counter()
       geom = vtk.vtkGeometryFilter()
@@ -315,8 +332,12 @@ async def mock_tcp(mesh_id:int, msg_id:int):
       apply_lut(polydata, lut, "VelocityMag")
 
       xml = xml_from_vtk_mesh(polydata)
-      bs = stub_message(xml, msg_id)
+
+      # cook message
+      recipe = MessageRecipe(total_frame_count, [FrameInfo(frame.frame_index, frame.frame_time, xml)])
+      bs = cooke_message(msg_id, recipe)
       print(f"processed {(time.perf_counter()-begin_sec)*1000:.4}ms")
+
       begin_sec = time.perf_counter()
       header = len(bs)
       header_bytes = struct.pack("=Q", header)
@@ -353,7 +374,8 @@ async def main():
 
   while 1:
     try:
-      await mock_ws(args.mesh_id, args.msg_id)
+      # await mock_ws(args.mesh_id, args.msg_id)
+      await mock_tcp(args.mesh_id, args.msg_id)
       print("OK")
       break
     except Exception as e:

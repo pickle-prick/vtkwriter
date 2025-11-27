@@ -25,36 +25,22 @@ class Information(object):
         self._tab = flatbuffers.table.Table(buf, pos)
 
     # Information
-    def TotalFrameCount(self):
+    def FrameIndex(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(4))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Uint64Flags, o + self._tab.Pos)
         return 0
 
     # Information
-    def TotalFrameDuration(self):
+    def FrameTimestep(self):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(6))
         if o != 0:
             return self._tab.Get(flatbuffers.number_types.Float32Flags, o + self._tab.Pos)
         return 0.0
 
     # Information
-    def FrameIndex(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
-        if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Uint64Flags, o + self._tab.Pos)
-        return 0
-
-    # Information
-    def FrameTimestamp(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
-        if o != 0:
-            return self._tab.Get(flatbuffers.number_types.Float32Flags, o + self._tab.Pos)
-        return 0.0
-
-    # Information
     def DataObject(self):
-        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(12))
+        o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         if o != 0:
             x = self._tab.Indirect(o + self._tab.Pos)
             from Envelope.DataObject import DataObject
@@ -64,37 +50,25 @@ class Information(object):
         return None
 
 def InformationStart(builder):
-    builder.StartObject(5)
+    builder.StartObject(3)
 
 def Start(builder):
     InformationStart(builder)
 
-def InformationAddTotalFrameCount(builder, totalFrameCount):
-    builder.PrependUint64Slot(0, totalFrameCount, 0)
-
-def AddTotalFrameCount(builder, totalFrameCount):
-    InformationAddTotalFrameCount(builder, totalFrameCount)
-
-def InformationAddTotalFrameDuration(builder, totalFrameDuration):
-    builder.PrependFloat32Slot(1, totalFrameDuration, 0.0)
-
-def AddTotalFrameDuration(builder, totalFrameDuration):
-    InformationAddTotalFrameDuration(builder, totalFrameDuration)
-
 def InformationAddFrameIndex(builder, frameIndex):
-    builder.PrependUint64Slot(2, frameIndex, 0)
+    builder.PrependUint64Slot(0, frameIndex, 0)
 
 def AddFrameIndex(builder, frameIndex):
     InformationAddFrameIndex(builder, frameIndex)
 
-def InformationAddFrameTimestamp(builder, frameTimestamp):
-    builder.PrependFloat32Slot(3, frameTimestamp, 0.0)
+def InformationAddFrameTimestep(builder, frameTimestep):
+    builder.PrependFloat32Slot(1, frameTimestep, 0.0)
 
-def AddFrameTimestamp(builder, frameTimestamp):
-    InformationAddFrameTimestamp(builder, frameTimestamp)
+def AddFrameTimestep(builder, frameTimestep):
+    InformationAddFrameTimestep(builder, frameTimestep)
 
 def InformationAddDataObject(builder, dataObject):
-    builder.PrependUOffsetTRelativeSlot(4, flatbuffers.number_types.UOffsetTFlags.py_type(dataObject), 0)
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(dataObject), 0)
 
 def AddDataObject(builder, dataObject):
     InformationAddDataObject(builder, dataObject)

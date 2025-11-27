@@ -12,6 +12,7 @@ class PipelineInformation:
 class Frame:
   pipeline_info:PipelineInformation
   frame_index:int
+  frame_time:float
   dataset:vtk.vtkDataSet
 
 class Reader(ABC):
