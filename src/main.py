@@ -181,30 +181,6 @@ def xml_from_vtk_mesh(mesh):
   # ret = ret.encode("utf8")
   return ret
 
-# def stub_message(mesh_id:int, msg_id:int) -> Message:
-#   msg = Message.zero() 
-#   msg.key = msg_id
-#   msg.information.name = "Cylinder"
-# 
-#   src = mesh_cylinder()
-#   if mesh_id == 0: src = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
-#   if mesh_id == 1: src = mesh_compund()
-#   if mesh_id == 2: pass
-#   src.Update()
-# 
-#   mesh = src.GetOutput()
-#   xml = xml_from_vtk_mesh(mesh)
-#   msg.data_objects.append(DataObject("PolyData", xml))
-#   return msg
-
-# def test():
-#   msg = stub_message()
-# 
-#   bs = bytes_from_message(msg) 
-#   print(bs)
-#   print()
-#   print(bs.decode("utf8"))
-
 async def mock_ws(mesh_id:int, msg_id:int):
   r = FluentCFFReader()
   r.read_project("./data/Fluent-result")

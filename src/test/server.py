@@ -98,6 +98,7 @@ def render_worker():
             if elapsed < 0: elapsed = 0
             clock_begin = time.perf_counter()
 
+          # FIXME: use TemporalInterpolator
           # find the frame
           frame = None
           frame_idx = -1
