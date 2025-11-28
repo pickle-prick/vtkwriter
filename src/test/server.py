@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import asyncio
 import vtk
 import time
@@ -9,24 +10,26 @@ from websockets.asyncio.connection import ConnectionClosedOK
 from Envelope.ForwardMessage import ForwardMessage
 from Envelope.DataObject import DataObject
 from Envelope.Information import Information
+from Envelope.PipelineInformation import PipelineInformation
 from threading import Thread, Event, Lock
 from dataclasses import dataclass
 import typing as t
 
 @dataclass
 class Frame:
-  timestamp:float
+  index:int
+  timestep:float
   xml:str
 
 frames:t.List[Frame] = []
 
 stop_evt = Event()
 lck = Lock()
-clock_begin_ms = 0
+clock_begin = 0
 clock_started = False
 
 def render_worker():
-  global clock_begin_ms
+  global clock_begin
   global clock_started
 
   c = vtk.vtkCylinderSource()
@@ -73,25 +76,39 @@ def render_worker():
     try:
       with lck:
         # Testing
-        for idx, f in enumerate(frames):
-          prev = None
-          if idx > 0: prev = frames[idx-1]
-          next = None
-          if idx < (len(frames)-1): next = frames[idx+1]
-          if prev: assert f.timestamp > prev.timestamp
-          if next: assert f.timestamp < next.timestamp
+        # for idx, f in enumerate(frames):
+        #   prev = None
+        #   if idx > 0: prev = frames[idx-1]
+        #   next = None
+        #   if idx < (len(frames)-1): next = frames[idx+1]
+        #   if prev: assert f.timestep > prev.timestep
+        #   if next: assert f.timestep < next.timestep
 
         if clock_started:
-          elapsed_ms = time.perf_counter()*1000-clock_begin_ms
+          elapsed = time.perf_counter()-clock_begin
+          # time_scale = 0.10
+          time_scale = 1.5
+          elapsed = elapsed*time_scale
+
+          # duration = frames[-1].timestep
+          duration = 4.0
+          if elapsed > duration:
+            while elapsed > duration:
+              elapsed -= duration
+            if elapsed < 0: elapsed = 0
+            clock_begin = time.perf_counter()
+
           # find the frame
           frame = None
           frame_idx = -1
           for idx, f in enumerate(frames):
-            if elapsed_ms < f.timestamp:
+            if (elapsed) < f.timestep:
+              print(f"{elapsed} => {f.timestep}")
+              # assert False
               break
             else:
               frame = f 
-              frame_dx = idx
+              frame_idx = idx
 
           if frame:
             print(f"Frame {frame_idx} picked")
@@ -112,13 +129,13 @@ def render_worker():
       raise
 
 async def handle_message(websocket: ServerConnection):
-  global clock_begin_ms
+  global clock_begin
   global clock_started
   global frames
   print("client connection")
   with lck:
     clock_started = False
-    clock_begin_ms = 0
+    clock_begin = 0
     frames = []
   while not stop_evt.is_set():
     try:
@@ -126,22 +143,31 @@ async def handle_message(websocket: ServerConnection):
     except ConnectionClosedOK:
       return
 
+    # parse frame
     message = ForwardMessage.GetRootAs(raw, 0)
-    timestamp = message.Timestamp()
-    print(f"message cost {(time.perf_counter()*1000-timestamp):.4}ms")
-    n_informations = message.InformationsLength()
-    assert n_informations == 1
-    information = message.Informations(0)
-    print(information.TotalFrameCount())
-    print(information.TotalFrameDuration())
-    data_object = information.DataObject()
-    xml = data_object.Xml()
-    frame_timestamp:float = information.FrameTimestamp()
-    assert isinstance(xml, bytes)
+    msg_timestamp = message.Timestamp()
+    pipeline_info = message.PipelineInfo()
+    information_count = message.InformationsLength()
+    fs = []
+    for i in range(information_count):
+      information = message.Informations(0)
+      frame_index = information.FrameIndex()
+      frame_timestep = information.FrameTimestep()
+      data_object = information.DataObject()
+      xml = data_object.Xml()
+      frame = Frame(frame_index, frame_timestep, xml.decode("utf-8"))
+      assert isinstance(xml, bytes)
+      fs.append(frame)
+
     # NOTE(k): we have to this lock, otherwise vtk could crash
     # seem like we can't call vtk in another thread
     with lck:
-      frames.append(Frame(frame_timestamp, xml.decode("utf8")))
+      for frame in fs:
+        if frame.index < (len(frames)-1):
+          frames[frame.index] = frame
+        else:
+          frames.append(frame)
+        frames[frame.index] = frame
       if not clock_started:
         clock_started=True
         clock_begin_ms = time.perf_counter()*1000.0

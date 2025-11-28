@@ -13,8 +13,8 @@ from lut import lut_from_name, apply_lut, default_lut
 import flatbuffers
 
 FORMAT_VERSION = "0.0.1"
-HOST = "10.0.0.243"
-# HOST = "127.0.0.1"
+# HOST = "10.0.0.243"
+HOST = "127.0.0.1"
 PORT = 8080
 
 ################################
@@ -228,16 +228,13 @@ async def mock_ws(mesh_id:int, msg_id:int):
   # transform_filter.SetInputConnection(tail.GetOutputPort())
   # sink = transform_filter
 
-  # # lut
-  # rng = (-2321.6083984375, 1010.710693359375)
-
-  lut = lut_from_name("inferno")
+  lut = lut_from_name("jet")
   lut.SetValueRange((0,1))
-  # lut = default_lut(rng, 256*4)
 
   writer = None
   uri = f"ws://{HOST}:{PORT}"
   async with websockets.connect(uri, max_size=None) as ws:
+    total_frame_count = len(r)
     async for frame in r:
       begin_sec = time.perf_counter()
       geom = vtk.vtkGeometryFilter()
@@ -257,14 +254,17 @@ async def mock_ws(mesh_id:int, msg_id:int):
       apply_lut(polydata, lut, "VelocityMag")
 
       xml = xml_from_vtk_mesh(polydata)
-      bs = stub_message(xml, msg_id, frame.frame_index*0.02*1000)
+
+      # cook message
+      recipe = MessageRecipe(total_frame_count, [FrameInfo(frame.frame_index, frame.frame_time, xml)])
+      bs = cooke_message(msg_id, recipe)
       print(f"processed {(time.perf_counter()-begin_sec)*1000:.4}ms")
+
       begin_sec = time.perf_counter()
       await ws.send(bs, text=True)
       now = time.perf_counter()
       print(f"sending took {(now-begin_sec)*1000:.4}ms, {len(bs)/(1024*1024):.2}mb, {len(bs)}bytes")
       await asyncio.sleep(0.0)
-      # print(f"sent: {i}")
 
       # update mesh
       # transform.RotateX(4.5)
@@ -281,8 +281,8 @@ async def mock_ws(mesh_id:int, msg_id:int):
   
 async def mock_tcp(mesh_id:int, msg_id:int):
   r = FluentCFFReader()
-  r.read_project("./data/Fluent-result")
-  # r.read_project("./data/3D-Pipe")
+  # r.read_project("./data/Fluent-result")
+  r.read_project("./data/3D-Pipe")
 
   # mesh = mesh_cylinder()
   # if mesh_id == 0: mesh = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
@@ -301,9 +301,6 @@ async def mock_tcp(mesh_id:int, msg_id:int):
   transform_filter.SetTransform(transform)
   # transform_filter.SetInputConnection(tail.GetOutputPort())
   # sink = transform_filter
-
-  # # lut
-  # rng = (-2321.6083984375, 1010.710693359375)
 
   # "viridis", "plasma", "inferno", "magma", "coolwarm"…
   # high contrast: turbo, jet, Accent
@@ -377,8 +374,8 @@ async def main():
 
   while 1:
     try:
-      # await mock_ws(args.mesh_id, args.msg_id)
-      await mock_tcp(args.mesh_id, args.msg_id)
+      await mock_ws(args.mesh_id, args.msg_id)
+      # await mock_tcp(args.mesh_id, args.msg_id)
       print("OK")
       break
     except Exception as e:
