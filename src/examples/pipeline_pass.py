@@ -23,6 +23,8 @@ class MySource(VTKPythonAlgorithmBase):
     #print outInfo.GetInformationObject(0)
     # NOTE: UPDATE_TIME_STEP() is not a request key
     # print(f"Request Has UPDATE_TIME_STEP: {request.Has(vtk.vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP())}")
+    # NOTE(k): this is added by excutive if we create a demand for UPDATE_TIME_STEP
+    print(f"Request Has UPDATE_EXTENT: {request.Has(vtk.vtkStreamingDemandDrivenPipeline.REQUEST_UPDATE_EXTENT())}")
     out = outInfo.GetInformationObject(0)
     print(f"OutputPort Has UPDATE_TIME_STEP: {out.Get(vtk.vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP())}")
     return 1
@@ -71,21 +73,21 @@ def main():
   print()
 
   print("## Pass 4 ##")
-  in_info = f.GetInputInformation(0,0);
+  in_info = f.GetInputInformation(0,0)
   in_info.Set(vtk.vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP(), 2.0)
   f.Modified()
   f.Update()
 
   print()
   print("## Pass 5 ##")
-  in_info = f.GetInputInformation(0,0);
+  in_info = f.GetInputInformation(0,0)
   in_info.Set(vtk.vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP(), 2.0)
   f.Modified()
   f.Update()
 
   print()
   print("## Pass 6 ##")
-  # NOTE: even UPDATE_TIME_STEP() is not a request key, this also work
+  # NOTE: even UPDATE_TIME_STEP() is not a request key, this will also work, my guess is that vtk mv this key into input port info
   # NOTE: RequestInformation will only be fired if algo is Modified, it's kind a black box, we should read more vtk source code
   req = vtk.vtkInformation()
   req.Set(vtk.vtkStreamingDemandDrivenPipeline.UPDATE_TIME_STEP(), 4.0)
