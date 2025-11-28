@@ -305,7 +305,9 @@ async def mock_tcp(mesh_id:int, msg_id:int):
   # # lut
   # rng = (-2321.6083984375, 1010.710693359375)
 
-  lut = lut_from_name("inferno")
+  # "viridis", "plasma", "inferno", "magma", "coolwarm"…
+  # high contrast: turbo, jet, Accent
+  lut = lut_from_name("jet")
   lut.SetValueRange((0,1))
   # lut = default_lut(rng, 256*4)
 
@@ -328,6 +330,7 @@ async def mock_tcp(mesh_id:int, msg_id:int):
       cell_to_point = vtk.vtkCellDataToPointData()
       cell_to_point.SetInputData(polydata)
       cell_to_point.Update()
+      cell_to_point.SetPassCellData(True) # disable interpolation
       polydata = cell_to_point.GetOutput()
       apply_lut(polydata, lut, "VelocityMag")
 
