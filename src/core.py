@@ -27,3 +27,46 @@ class Reader(ABC):
   @abstractmethod
   async def __anext__(self) -> Frame:
     pass
+
+################################
+## Writer
+
+@dataclass
+class Message:
+  kind:str
+  timestamp:float
+  payload:bytes
+  payload_size:int
+
+class Writer(ABC):
+  def __len__(self) -> int:
+    pass
+
+  def has_any(self) -> bool:
+    pass
+
+  def dock(port:int) -> None:
+    pass
+
+  def undock(port:int) -> None:
+    pass
+
+  # queue
+  def push_back(msg: Message) -> None:
+    pass
+
+  # stack
+  def push_front(msg: Message) -> None:
+    pass
+
+  def override(msg: Message) -> None:
+    pass
+
+  def eof(msg: Message) -> None:
+    pass
+
+  def capture(self, count:int) -> some:
+    pass
+
+  def capture_and_save(self, count:int, out_file:str) -> None:
+    pass
