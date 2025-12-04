@@ -13,8 +13,8 @@ from lut import lut_from_name, apply_lut, default_lut
 import flatbuffers
 
 FORMAT_VERSION = "0.0.1"
-# HOST = "10.0.0.243"
-HOST = "127.0.0.1"
+HOST = "10.0.0.243"
+# HOST = "127.0.0.1"
 PORT = 8080
 
 ################################
@@ -257,8 +257,8 @@ async def mock_ws(mesh_id:int, msg_id:int):
   
 async def mock_tcp(mesh_id:int, msg_id:int):
   r = FluentCFFReader()
-  # r.read_project("./data/Fluent-result")
-  r.read_project("./data/3D-Pipe")
+  r.read_project("./data/Fluent-result")
+  # r.read_project("./data/3D-Pipe")
 
   # mesh = mesh_cylinder()
   # if mesh_id == 0: mesh = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
@@ -350,8 +350,8 @@ async def main():
 
   while 1:
     try:
-      await mock_ws(args.mesh_id, args.msg_id)
-      # await mock_tcp(args.mesh_id, args.msg_id)
+      # await mock_ws(args.mesh_id, args.msg_id)
+      await mock_tcp(args.mesh_id, args.msg_id)
       print("OK")
       break
     except Exception as e:
