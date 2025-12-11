@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from core import Reader
 import typing as t
 from reader.fluent_cff import FluentCFFReader
+from reader.vtk_frames import VtkFrameReader
 from Envelope import ForwardMessage, DataObject, Information, PipelineInformation
 from lut import lut_from_name, apply_lut, default_lut
 import flatbuffers
@@ -181,11 +182,7 @@ def xml_from_vtk_mesh(mesh):
   # ret = ret.encode("utf8")
   return ret
 
-async def mock_ws(mesh_id:int, msg_id:int):
-  r = FluentCFFReader()
-  r.read_project("./data/Fluent-result")
-  # r.read_project("./data/3D-Pipe")
-
+async def mock_ws(mesh_id:int, msg_id:int, r:Reader):
   # mesh = mesh_cylinder()
   # if mesh_id == 0: mesh = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
   # if mesh_id == 1: mesh = mesh_compund()
@@ -204,8 +201,9 @@ async def mock_ws(mesh_id:int, msg_id:int):
   # transform_filter.SetInputConnection(tail.GetOutputPort())
   # sink = transform_filter
 
-  lut = lut_from_name("jet")
-  lut.SetValueRange((0,1))
+  lut_table_name = "magma"
+  lut = lut_from_name(lut_table_name)
+  lut.SetValueRange((0,300))
 
   writer = None
   uri = f"ws://{HOST}:{PORT}"
@@ -213,21 +211,30 @@ async def mock_ws(mesh_id:int, msg_id:int):
     total_frame_count = len(r)
     async for frame in r:
       begin_sec = time.perf_counter()
-      geom = vtk.vtkGeometryFilter()
-      geom.SetInputData(frame.dataset)
-      geom.Update()
-      polydata = geom.GetOutput(0)
+      # geom = vtk.vtkGeometryFilter()
+      # geom.SetInputData(frame.dataset)
+      # geom.Update()
+      # polydata = geom.GetOutput(0)
 
-      transform.RotateX(0.15)
-      transform_filter.SetInputData(polydata)
-      transform_filter.Update()
-      polydata = transform_filter.GetOutput(0)
+      surface_filter = vtk.vtkDataSetSurfaceFilter()
+      surface_filter.SetInputData(frame.dataset) # data = UGrid, SGrid, ImageData, etc.
+      surface_filter.Update()
+      polydata = surface_filter.GetOutput()
 
-      cell_to_point = vtk.vtkCellDataToPointData()
-      cell_to_point.SetInputData(polydata)
-      cell_to_point.Update()
-      polydata = cell_to_point.GetOutput()
-      apply_lut(polydata, lut, "VelocityMag")
+      # transform.RotateX(0.15)
+      # transform_filter.SetInputData(polydata)
+      # transform_filter.Update()
+      # polydata = transform_filter.GetOutput(0)
+
+      # FIXME: remove unnecessary point_data/cell_data
+
+      # cell_to_point = vtk.vtkCellDataToPointData()
+      # cell_to_point.SetInputData(polydata)
+      # cell_to_point.Update()
+      # polydata = cell_to_point.GetOutput()
+      # apply_lut(polydata, lut, "VelocityMag")
+
+      apply_lut(polydata, lut, "pstress")
 
       xml = xml_from_vtk_mesh(polydata)
 
@@ -255,11 +262,7 @@ async def mock_ws(mesh_id:int, msg_id:int):
       # await ws.send("123")
       # print(f"{frame_begin_ms}, {msg.key} {mesh_id}")
   
-async def mock_tcp(mesh_id:int, msg_id:int):
-  r = FluentCFFReader()
-  r.read_project("./data/Fluent-result")
-  # r.read_project("./data/3D-Pipe")
-
+async def mock_tcp(mesh_id:int, msg_id:int, r:Reader):
   # mesh = mesh_cylinder()
   # if mesh_id == 0: mesh = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
   # if mesh_id == 1: mesh = mesh_compund()
@@ -272,40 +275,77 @@ async def mock_tcp(mesh_id:int, msg_id:int):
   #   tail.SetInputConnection(mesh.GetOutputPort())
   #   # tail.ReverseNormalsOn()
 
-  transform = vtk.vtkTransform()
-  transform_filter = vtk.vtkTransformPolyDataFilter()
-  transform_filter.SetTransform(transform)
   # transform_filter.SetInputConnection(tail.GetOutputPort())
   # sink = transform_filter
 
   # "viridis", "plasma", "inferno", "magma", "coolwarm"…
   # high contrast: turbo, jet, Accent
-  lut = lut_from_name("jet")
-  lut.SetValueRange((0,1))
+  # lut_table_name = "magma"
+  # lut_table_name = "jet"
+  lut_table_name = "coolwarm"
+  lut = lut_from_name(lut_table_name)
+  lut.SetValueRange((0,301))
   # lut = default_lut(rng, 256*4)
 
   writer = None
   try:
     reader, writer = await asyncio.open_connection(HOST, PORT)
     total_frame_count = len(r)
+    payloads = []
     async for frame in r:
       begin_sec = time.perf_counter()
+      polydata = frame.dataset
+
       geom = vtk.vtkGeometryFilter()
       geom.SetInputData(frame.dataset)
       geom.Update()
       polydata = geom.GetOutput(0)
 
-      transform.RotateX(0.15)
+      # surface_filter = vtk.vtkDataSetSurfaceFilter()
+      # surface_filter.SetInputData(frame.dataset) # data = UGrid, SGrid, ImageData, etc.
+      # surface_filter.Update()
+      # polydata = surface_filter.GetOutput()
+
+      # FIXME: remove unnecessary point_data/cell_data
+      # Transform
+      center = polydata.GetCenter()
+      transform = vtk.vtkTransform()
+      # transform.Identity()
+      transform.PostMultiply()
+      transform.Translate(-center[0], -center[1], -center[2])
+      direction = -1
+      if msg_id == 1: direction = 1
+      transform.RotateZ(((45.0*direction)/total_frame_count) * frame.frame_index)
+      transform.Translate(center[0], center[1], center[2])
+
+      transform_filter = vtk.vtkTransformPolyDataFilter()
+      transform_filter.SetTransform(transform)
       transform_filter.SetInputData(polydata)
+      transform_filter.Modified()
       transform_filter.Update()
       polydata = transform_filter.GetOutput(0)
 
-      cell_to_point = vtk.vtkCellDataToPointData()
-      cell_to_point.SetInputData(polydata)
-      cell_to_point.Update()
-      cell_to_point.SetPassCellData(True) # disable interpolation
-      polydata = cell_to_point.GetOutput()
-      apply_lut(polydata, lut, "VelocityMag")
+      normals = vtk.vtkPolyDataNormals()
+      normals.SetConsistency(False)      # Critical: enforce consistent polygon orientation
+      # normals.FlipNormalsOn()          # or On(), depending on your coordinate system
+      normals.SplittingOff()
+      # normals.AutoOrientNormalsOn()
+      normals.SetInputData(polydata)
+      normals.Update()
+      polydata = normals.GetOutput()
+
+      # transform.RotateX(0.15)
+      # transform_filter.SetInputData(polydata)
+      # transform_filter.Update()
+      # polydata = transform_filter.GetOutput(0)
+
+      # cell_to_point = vtk.vtkCellDataToPointData()
+      # cell_to_point.SetInputData(polydata)
+      # cell_to_point.Update()
+      # cell_to_point.SetPassCellData(True) # disable interpolation
+      # polydata = cell_to_point.GetOutput()
+      # apply_lut(polydata, lut, "VelocityMag")
+      apply_lut(polydata, lut, "pstress")
 
       xml = xml_from_vtk_mesh(polydata)
 
@@ -348,10 +388,19 @@ async def main():
   args = parser.parse_args()
   print(args.mesh_id, args.msg_id)
 
+  # r = FluentCFFReader()
+  # r.read_project("./data/Fluent-result")
+  # r.read_project("./data/3D-Pipe")
+  files = [f"./data/GearNew/GEAR{args.msg_id+1}_{i}.vtu" for i in range(90)]
+  print(files)
+  # files = [f"./data/Gear/test_{i}.vtu" for i in range(2)]
+  r = VtkFrameReader() 
+  r.load_files(files)
+
   while 1:
     try:
-      # await mock_ws(args.mesh_id, args.msg_id)
-      await mock_tcp(args.mesh_id, args.msg_id)
+      # await mock_ws(args.mesh_id, args.msg_id, r)
+      await mock_tcp(args.mesh_id, args.msg_id, r)
       print("OK")
       break
     except Exception as e:

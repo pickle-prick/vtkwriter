@@ -87,7 +87,7 @@ def render_worker():
         if clock_started:
           elapsed = time.perf_counter()-clock_begin
           # time_scale = 0.10
-          time_scale = 1.5
+          time_scale = 1.0
           elapsed = elapsed*time_scale
 
           # duration = frames[-1].timestep
