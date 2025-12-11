@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from core import Reader, Frame, PipelineInformation
 import vtk
 
-STEP_DURATION = 0.02
+# STEP_DURATION = 0.02
+STEP_DURATION = 0.05
 
 class VtkFrameReader(Reader):
   def __init__(self):
@@ -17,7 +18,7 @@ class VtkFrameReader(Reader):
     self.files:t.List[str] = []
     # self.reader = vtk.PolyDataReader()
     self.reader = vtk.vtkXMLPolyDataReader()
-    self.reader = vtk.vtkXMLUnstructuredGridReader()
+    # self.reader = vtk.vtkXMLUnstructuredGridReader()
     self.cached:t.List[vtk.DataSet] = []
 
   def load_files(self, files:t.List[str]) -> None:
@@ -30,17 +31,17 @@ class VtkFrameReader(Reader):
 
       ret = self.reader.GetOutput(0)
 
-      clean = vtk.vtkCleanUnstructuredGrid()
-      clean.SetInputData(ret)
-      clean.Update()
-      ret = clean.GetOutput()
+      # clean = vtk.vtkCleanUnstructuredGrid()
+      # clean.SetInputData(ret)
+      # clean.Update()
+      # ret = clean.GetOutput()
 
       # geom = vtk.vtkGeometryFilter()
       # geom.SetInputData(self.reader.GetOutput())
       # geom.Update()
       # polydata = geom.GetOutput(0)
 
-      dataset = vtk.vtkUnstructuredGrid()
+      dataset = vtk.vtkPolyData()
       dataset.DeepCopy(ret) # NOTE: we need to deep copy to make cache work
       self.cached.append(dataset)
 
@@ -61,7 +62,7 @@ class VtkFrameReader(Reader):
     return len(self.files)
 
 async def test():
-  files = [f"./data/Gear/GEAR1_{i}.vtu" for i in range(5)]
+  files = [f"./data/GearNew/GEAR1_{i}.vtp" for i in range(5)]
   # files = [f"./data/Gear/test_{i}.vtu" for i in range(2)]
   reader = VtkFrameReader() 
   reader.load_files(files)

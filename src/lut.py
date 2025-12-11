@@ -1,17 +1,37 @@
 import vtk
 import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+import numpy as np
 import random
 from dataclasses import dataclass
 
-def lut_from_name(cmap_name:str, n=512) -> vtk.vtkLookupTable:
-  cmap = cm.get_cmap(cmap_name, n)
+def lut_from_name(cmap_name:str, num_colors:int = 256) -> vtk.vtkLookupTable:
+  # cmap = cm.get_cmap(cmap_name)
+  # cmap = ListedColormap(["blue", "yellow", "red"])
+  try:
+    cmap = plt.get_cmap(cmap_name)
+  except ValueError:
+    cmap = plt.get_cmap("viridis")
+
   lut = vtk.vtkLookupTable()
-  lut.SetNumberOfTableValues(n)
-  for i in range(n):
-    r,g,b,a = cmap(i/(n-1))
-    lut.SetTableValue(i, r,g,b,a)
+  lut.SetNumberOfTableValues(num_colors)
+  values = np.linspace(0,1, num_colors)
+
+  mapped_colors = cmap(values)
+
+  for i in range(num_colors):
+    r,g,b,a = mapped_colors[i]
+    lut.SetTableValue(i, r, g, b, a)
+
+  # lut.SetTableRange(0, 1)
+  # lut.SetTableRange((0,1))
+  # lut.SetValueRange((0,661*2))
+  # lut.SetTableRange((0,661*0.15))
+  lut.SetTableRange((0,661*0.5))
   lut.Build()
   return lut
+
 
 def apply_lut(mesh:vtk.vtkPolyData, lut:vtk.vtkLookupTable, scalar:str|None = None) -> int:
   point_data = mesh.GetPointData()
@@ -22,8 +42,6 @@ def apply_lut(mesh:vtk.vtkPolyData, lut:vtk.vtkLookupTable, scalar:str|None = No
     array = point_data.GetScalars()
 
   if not array: return 0
-  rng = array.GetRange()
-  lut.SetTableRange(rng)
   color_array = lut.MapScalars(array, vtk.VTK_COLOR_MODE_DEFAULT, -1)
   color_array.SetName("Colors")
   point_data.AddArray(color_array)

@@ -183,11 +183,6 @@ def xml_from_vtk_mesh(mesh):
   return ret
 
 async def mock_ws(mesh_id:int, msg_id:int, r:Reader):
-  # mesh = mesh_cylinder()
-  # if mesh_id == 0: mesh = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
-  # if mesh_id == 1: mesh = mesh_compund()
-  # if mesh_id == 2: pass
-
   # # pipeline
   # tail = mesh
   # if mesh_id == 0:
@@ -195,15 +190,9 @@ async def mock_ws(mesh_id:int, msg_id:int, r:Reader):
   #   tail.SetInputConnection(mesh.GetOutputPort())
   #   # tail.ReverseNormalsOn()
 
-  transform = vtk.vtkTransform()
-  transform_filter = vtk.vtkTransformPolyDataFilter()
-  transform_filter.SetTransform(transform)
-  # transform_filter.SetInputConnection(tail.GetOutputPort())
-  # sink = transform_filter
-
-  lut_table_name = "magma"
+  # "viridis", "plasma", "inferno", "magma", "coolwarm"…
+  lut_table_name = "jet"
   lut = lut_from_name(lut_table_name)
-  lut.SetValueRange((0,300))
 
   writer = None
   uri = f"ws://{HOST}:{PORT}"
@@ -211,28 +200,45 @@ async def mock_ws(mesh_id:int, msg_id:int, r:Reader):
     total_frame_count = len(r)
     async for frame in r:
       begin_sec = time.perf_counter()
+      polydata = frame.dataset
+
       # geom = vtk.vtkGeometryFilter()
       # geom.SetInputData(frame.dataset)
       # geom.Update()
       # polydata = geom.GetOutput(0)
 
-      surface_filter = vtk.vtkDataSetSurfaceFilter()
-      surface_filter.SetInputData(frame.dataset) # data = UGrid, SGrid, ImageData, etc.
-      surface_filter.Update()
-      polydata = surface_filter.GetOutput()
-
-      # transform.RotateX(0.15)
-      # transform_filter.SetInputData(polydata)
-      # transform_filter.Update()
-      # polydata = transform_filter.GetOutput(0)
+      # surface_filter = vtk.vtkDataSetSurfaceFilter()
+      # surface_filter.SetInputData(frame.dataset) # data = UGrid, SGrid, ImageData, etc.
+      # surface_filter.Update()
+      # polydata = surface_filter.GetOutput()
 
       # FIXME: remove unnecessary point_data/cell_data
+      # Transform
+      center = polydata.GetCenter()
+      transform = vtk.vtkTransform()
+      # transform.Identity()
+      transform.PostMultiply()
+      transform.Translate(-center[0], -center[1], -center[2])
+      direction = -1
+      if msg_id == 1: direction = 1
+      transform.RotateZ(((60.0*direction)/total_frame_count) * frame.frame_index)
+      transform.Translate(center[0], center[1], center[2])
 
-      # cell_to_point = vtk.vtkCellDataToPointData()
-      # cell_to_point.SetInputData(polydata)
-      # cell_to_point.Update()
-      # polydata = cell_to_point.GetOutput()
-      # apply_lut(polydata, lut, "VelocityMag")
+      transform_filter = vtk.vtkTransformPolyDataFilter()
+      transform_filter.SetTransform(transform)
+      transform_filter.SetInputData(polydata)
+      transform_filter.Modified()
+      transform_filter.Update()
+      polydata = transform_filter.GetOutput(0)
+
+      # normals = vtk.vtkPolyDataNormals()
+      # normals.SetConsistency(False)      # Critical: enforce consistent polygon orientation
+      # # normals.FlipNormalsOn()          # or On(), depending on your coordinate system
+      # normals.SplittingOff()
+      # # normals.AutoOrientNormalsOn()
+      # normals.SetInputData(polydata)
+      # normals.Update()
+      # polydata = normals.GetOutput()
 
       apply_lut(polydata, lut, "pstress")
 
@@ -248,50 +254,30 @@ async def mock_ws(mesh_id:int, msg_id:int, r:Reader):
       now = time.perf_counter()
       print(f"sending took {(now-begin_sec)*1000:.4}ms, {len(bs)/(1024*1024):.2}mb, {len(bs)}bytes")
       await asyncio.sleep(0.0)
-
-      # update mesh
-      # transform.RotateX(4.5)
-      # sink.Update()
-      # polydata = transform_filter.GetOutput()
-      # lut_applied = apply_lut(polydata, lut, "p")
-      # xml = xml_from_vtk_mesh(polydata)
-      # bs = stub_message(xml, msg_id)
-
       # await ws.send(bs)
       # await ws.send(bs, text=True)
-      # await ws.send("123")
-      # print(f"{frame_begin_ms}, {msg.key} {mesh_id}")
   
 async def mock_tcp(mesh_id:int, msg_id:int, r:Reader):
-  # mesh = mesh_cylinder()
-  # if mesh_id == 0: mesh = mesh_from_vtk_legacy("./data/pressure_field_mesh.vtk")
-  # if mesh_id == 1: mesh = mesh_compund()
-  # if mesh_id == 2: pass
 
-  # # pipeline
-  # tail = mesh
-  # if mesh_id == 0:
-  #   tail = vtk.vtkReverseSense()
-  #   tail.SetInputConnection(mesh.GetOutputPort())
-  #   # tail.ReverseNormalsOn()
-
-  # transform_filter.SetInputConnection(tail.GetOutputPort())
-  # sink = transform_filter
+  #  tail = vtk.vtkReverseSense()
+  #  tail.SetInputConnection(mesh.GetOutputPort())
+  #  # tail.ReverseNormalsOn()
 
   # "viridis", "plasma", "inferno", "magma", "coolwarm"…
   # high contrast: turbo, jet, Accent
   # lut_table_name = "magma"
   # lut_table_name = "jet"
-  lut_table_name = "coolwarm"
+  lut_table_name = "jet"
   lut = lut_from_name(lut_table_name)
-  lut.SetValueRange((0,301))
+  # lut.SetValueRange((0,661))
+  # lut.SetTableRange((0,661))
   # lut = default_lut(rng, 256*4)
 
   writer = None
   try:
     reader, writer = await asyncio.open_connection(HOST, PORT)
     total_frame_count = len(r)
-    payloads = []
+    frame_infos = []
     async for frame in r:
       begin_sec = time.perf_counter()
       polydata = frame.dataset
@@ -315,7 +301,7 @@ async def mock_tcp(mesh_id:int, msg_id:int, r:Reader):
       transform.Translate(-center[0], -center[1], -center[2])
       direction = -1
       if msg_id == 1: direction = 1
-      transform.RotateZ(((45.0*direction)/total_frame_count) * frame.frame_index)
+      transform.RotateZ(((65.0*direction)/total_frame_count) * frame.frame_index)
       transform.Translate(center[0], center[1], center[2])
 
       transform_filter = vtk.vtkTransformPolyDataFilter()
@@ -325,19 +311,14 @@ async def mock_tcp(mesh_id:int, msg_id:int, r:Reader):
       transform_filter.Update()
       polydata = transform_filter.GetOutput(0)
 
-      normals = vtk.vtkPolyDataNormals()
-      normals.SetConsistency(False)      # Critical: enforce consistent polygon orientation
-      # normals.FlipNormalsOn()          # or On(), depending on your coordinate system
-      normals.SplittingOff()
-      # normals.AutoOrientNormalsOn()
-      normals.SetInputData(polydata)
-      normals.Update()
-      polydata = normals.GetOutput()
-
-      # transform.RotateX(0.15)
-      # transform_filter.SetInputData(polydata)
-      # transform_filter.Update()
-      # polydata = transform_filter.GetOutput(0)
+      # normals = vtk.vtkPolyDataNormals()
+      # normals.SetConsistency(False)      # Critical: enforce consistent polygon orientation
+      # # normals.FlipNormalsOn()          # or On(), depending on your coordinate system
+      # normals.SplittingOff()
+      # # normals.AutoOrientNormalsOn()
+      # normals.SetInputData(polydata)
+      # normals.Update()
+      # polydata = normals.GetOutput()
 
       # cell_to_point = vtk.vtkCellDataToPointData()
       # cell_to_point.SetInputData(polydata)
@@ -348,34 +329,21 @@ async def mock_tcp(mesh_id:int, msg_id:int, r:Reader):
       apply_lut(polydata, lut, "pstress")
 
       xml = xml_from_vtk_mesh(polydata)
-
-      # cook message
-      recipe = MessageRecipe(total_frame_count, [FrameInfo(frame.frame_index, frame.frame_time, xml)])
-      bs = cooke_message(msg_id, recipe)
+      frame_infos.append(FrameInfo(frame.frame_index, frame.frame_time, xml))
       print(f"processed {(time.perf_counter()-begin_sec)*1000:.4}ms")
 
-      begin_sec = time.perf_counter()
-      header = len(bs)
-      header_bytes = struct.pack("=Q", header)
-      writer.write(header_bytes+bs)
-      await writer.drain()
-      now = time.perf_counter()
-      print(f"sending took {(now-begin_sec)*1000:.4}ms, {len(bs)/(1024*1024):.2}mb, {len(bs)}bytes")
-      await asyncio.sleep(0.0)
-      # print(f"sent: {i}")
+    # cook message
+    recipe = MessageRecipe(total_frame_count, frame_infos)
+    bs = cooke_message(msg_id, recipe)
 
-      # update mesh
-      # transform.RotateX(4.5)
-      # sink.Update()
-      # polydata = transform_filter.GetOutput()
-      # lut_applied = apply_lut(polydata, lut, "p")
-      # xml = xml_from_vtk_mesh(polydata)
-      # bs = stub_message(xml, msg_id)
-
-      # await ws.send(bs)
-      # await ws.send(bs, text=True)
-      # await ws.send("123")
-      # print(f"{frame_begin_ms}, {msg.key} {mesh_id}")
+    # send message
+    begin_sec = time.perf_counter()
+    header = len(bs)
+    header_bytes = struct.pack("=Q", header)
+    writer.write(header_bytes+bs)
+    await writer.drain()
+    now = time.perf_counter()
+    print(f"sending took {(now-begin_sec)*1000:.4}ms, {len(bs)/(1024*1024):.2}mb, {len(bs)}bytes")
   finally:
     if writer:
       writer.close()
@@ -391,7 +359,7 @@ async def main():
   # r = FluentCFFReader()
   # r.read_project("./data/Fluent-result")
   # r.read_project("./data/3D-Pipe")
-  files = [f"./data/GearNew/GEAR{args.msg_id+1}_{i}.vtu" for i in range(90)]
+  files = [f"./data/GearNew/GEAR{args.msg_id+1}_{i}.vtp" for i in range(100)]
   print(files)
   # files = [f"./data/Gear/test_{i}.vtu" for i in range(2)]
   r = VtkFrameReader() 
