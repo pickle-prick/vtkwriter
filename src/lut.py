@@ -16,6 +16,7 @@ def lut_from_name(cmap_name:str, num_colors:int = 256) -> vtk.vtkLookupTable:
 
   lut = vtk.vtkLookupTable()
   lut.SetNumberOfTableValues(num_colors)
+  # Generates evenly spaced scalar values between 0 and 1, for example, num_colors = 5 => [0.0, 0.25, 0.5, 0.75, 1.0]
   values = np.linspace(0,1, num_colors)
 
   mapped_colors = cmap(values)
@@ -24,14 +25,15 @@ def lut_from_name(cmap_name:str, num_colors:int = 256) -> vtk.vtkLookupTable:
     r,g,b,a = mapped_colors[i]
     lut.SetTableValue(i, r, g, b, a)
 
-  # lut.SetTableRange(0, 1)
-  # lut.SetTableRange((0,1))
-  # lut.SetValueRange((0,661*2))
-  # lut.SetTableRange((0,661*0.15))
+  # NOTE(k): Affect color generate inside of LUT
+  # Brightness (V in HSV) of generated colors
+  # lut.SetValueRange((0,1))
+
+  # NOTE(k): Range of scalar values in your dataset
   lut.SetTableRange((0,661*0.5))
+
   lut.Build()
   return lut
-
 
 def apply_lut(mesh:vtk.vtkPolyData, lut:vtk.vtkLookupTable, scalar:str|None = None) -> int:
   point_data = mesh.GetPointData()
