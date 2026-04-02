@@ -1,0 +1,38 @@
+[
+  {
+    "id": 0,
+    "name": "Flange_Transform",
+    "kind": "Vector",
+    "length": 6
+  },
+  {
+    "id": 1,
+    "name": "Link1_Transform",
+    "kind": "Vector",
+    "length": 6
+  },
+  {
+    "id": 2,
+    "name": "Link2_Transform",
+    "kind": "Vector",
+    "length": 6
+  },
+  {
+    "id": 3,
+    "name": "Link3_Transform",
+    "kind": "Vector",
+    "length": 6
+  },
+  {
+    "id": 4,
+    "name": "Link4_Transform",
+    "kind": "Vector",
+    "length": 6
+  },
+  {
+    "id": 5,
+    "name": "Link5_Transform",
+    "kind": "Vector",
+    "length": 6
+  }
+]

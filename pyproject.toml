@@ -11,3 +11,8 @@ dependencies = [
     "vtk>=9.5.2",
     "websockets>=15.0.1",
 ]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+]

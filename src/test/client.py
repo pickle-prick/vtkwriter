@@ -4,7 +4,7 @@ import websockets
 import pyvista as pv
 
 async def main():
-  uri = "ws://localhost:1080"
+  uri = "ws://localhost:5554"
 
   pl = pv.Plotter()
   pl.show(auto_close=False, interactive_update=True)

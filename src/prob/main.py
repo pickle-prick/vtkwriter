@@ -98,7 +98,7 @@ def main():
 
             print(f"Sent frame {frame_count}")
             frame_count += 1
-            time.sleep(0.01)
+            time.sleep(0.10)
     except KeyboardInterrupt:
         print("Stopping...")
 
