@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\k\dev\Dirt\Plugins\RealtimeVisualizationToolkit\Source\ThirdParty\TypedChannel\Local\typedchannel\py\bindings.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\k\dev\Dirt\Plugins\RealtimeVisualizationToolkit\Source\ThirdParty\TypedChannel\Local\typedchannel\py\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{0CF97DEC-C611-3420-B0B8-6F7534D6B5CF}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
