@@ -117,6 +117,11 @@ def export(cgns_path:str, points_bin_path:str, bin_search_path:str, outdir: str)
   mesh = pv.read(cgns_path).get_block(0).get_block(0).get_block(0)
   mesh = mesh.extract_surface().triangulate()
 
+  # Merge duplicate point
+  # cleaned_mesh = mesh.clean(point_merging=True, tolerance=1e-4, absolute=False)
+  # n_total = mesh.n_points
+  # n_unique = len(np.unique(mesh.points, axis=0))
+
   ################################
   # Read Points
 
