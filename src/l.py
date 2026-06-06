@@ -125,7 +125,7 @@ def export(cgns_path:str, points_bin_path:str, bin_search_path:str, outdir: str)
   ################################
   # Read Points
 
-  points = read_bin_file("./data/grinding/points.bin", 3)
+  points = read_bin_file(points_bin_path, 3)
   # point_idx = nn_index_map(points, mesh.points).ravel()
   point_idx = nn_index_map(mesh.points, points).ravel()
   assert len(np.unique(point_idx)) == len(point_idx), ( "Point index unique check failure")
@@ -159,7 +159,8 @@ def export(cgns_path:str, points_bin_path:str, bin_search_path:str, outdir: str)
   # mesh.plot(show_edges=False)
 
 def main():
-  export("./data/grinding/grinding.cgns", "./data/grinding/points.bin", "./data/grinding/Snapshots/", "./data/grinding/griding_out/")
+  # export("./data/grinding/grinding.cgns", "./data/grinding/points.bin", "./data/grinding/Snapshots/", "./data/grinding/griding_out/")
+  export("./data/grinding_simplified/grindingmesh.cgns", "./data/grinding_simplified/points.bin", "./data/grinding_simplified/Snapshots/", "./data/grinding_simplified/griding_out/")
 
 if __name__ == "__main__":
   main()
